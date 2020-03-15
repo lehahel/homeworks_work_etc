@@ -1,0 +1,1 @@
+bool boolator_b();
