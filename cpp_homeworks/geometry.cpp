@@ -3,8 +3,19 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
  
 using namespace std;
+
+#define EPSILON 1e-10;
+
+double toRad(double angle) {
+    return (angle / 180) * M_PI;
+}
+
+bool areSame(const double& first, const double& second) {
+    return fabs(first - second) < EPSILON;
+}
 
 struct Point {
     double x;
@@ -16,14 +27,14 @@ struct Point {
 };
 
 bool Point::operator==(const Point& other) const {
-    return x == other.x && y == other.y;
+    return areSame(x, other.x) && areSame(y, other.y);
 }
 
 bool Point::operator!=(const Point& other) const {
     return !(*this == other);
 }
 
-double distance(const Point& left, const Point& right) {
+double bandistance(const Point& left, const Point& right) {
     return sqrt((left.x - right.x) * (left.x - right.x) + (left.y - right.y) * (left.y - right.y));
 }
 
@@ -31,8 +42,11 @@ void rotatePoint(Point& point, const Point& center, double& angle) {
     point.x -= center.x;
     point.y -= center.y;
     
-    point.x = cos(angle) * point.x - sin(angle) * point.y;
-    point.y = sin(angle) * point.x + cos(angle) * point.y;
+    double x = cos(toRad(angle)) * point.x - sin(toRad(angle)) * point.y;
+    double y = sin(toRad(angle)) * point.x + cos(toRad(angle)) * point.y;
+
+    point.x = x;
+    point.y = y;
 
     point.x += center.x;
     point.y += center.y;
@@ -49,36 +63,29 @@ class Line {
 public:
     Line() : a(0), b(0), c(0) {};
     Line(const Point& first, const Point& second);
-    Line(const double& angle_coef, const double& shift);
-    Line(const Point& first, const double& angle_coef);
+    Line(double angle_coef, double shift);
+    Line(const Point& first, double angle_coef);
     double get_coef() const;
     bool operator==(const Line& other) const;
     friend Point lineIntersection(const Line& first, const Line& second);
-
-private:
-    // Ax + By + C = 0
     double a, b, c;
 };
 
 Line::Line(const Point& first, const Point& second) {
-    a = 1.0;
-    b = (second.x - first.x) / (second.y - first.y);
-    c = (first.x * second.y - first.y * second.x) / (second.y - first.y);
+    a = first.y - second.y;
+    b = second.x - first.x;
+    c = first.x * second.y - second.x * first.y;
 }
 
-Line::Line(const double& angle_coef, const double& shift) {
-    Point first(shift, 0);
-    Point second(shift + 1, angle_coef);
-    a = 1.0;
-    b = (second.x - first.x) / (second.y - first.y);
-    c = (first.x * second.y - first.y * second.x) / (second.y - first.y);
+Line::Line(double angle_coef, double shift) {
+    Point first(0, shift);
+    Point second(1, shift + angle_coef);
+    *this = Line(first, second);
 }
 
-Line::Line(const Point& first, const double& angle_coef) {
+Line::Line(const Point& first, double angle_coef) {
     Point second(first.x + 1, first.y + angle_coef);
-    a = 1.0;
-    b = (second.x - first.x) / (second.y - first.y);
-    c = (first.x * second.y - first.y * second.x) / (second.y - first.y);
+    *this = Line(first, second);
 }
 
 double Line::get_coef() const {
@@ -86,7 +93,25 @@ double Line::get_coef() const {
 }
 
 bool Line::operator==(const Line& other) const {
-    return a == other.a && b == other.b && c == other.c;
+    if (areSame(a, 0) && !areSame(other.a, 0))
+        return false;
+    if (!areSame(a, 0) && areSame(other.a, 0))
+        return false;
+    if (areSame(b, 0) && !areSame(other.b, 0))
+        return false;
+    if (!areSame(b, 0) && areSame(other.b, 0))
+        return false;
+    if (areSame(c, 0) && !areSame(other.c, 0))
+        return false;
+    if (!areSame(c, 0) && areSame(other.a, 0))
+        return false;
+    if (areSame(a, 0))
+        return areSame(-c / b, -other.c / other.b);
+    if (areSame(b, 0))
+        return areSame(-c / a, -other.c / other.a);
+    if (areSame(c, 0))
+        return areSame(a / other.a, b / other.b);
+    return areSame(a / other.a, b / other.b) && areSame(b / other.b, c / other.c);
 }
 
 Point lineIntersection(const Line& first, const Line& second) {
@@ -96,7 +121,7 @@ Point lineIntersection(const Line& first, const Line& second) {
 }
 
 void reflexPoint(Point& point, const Line& line) {
-    Line ortholine = Line(point, 1 / line.get_coef());
+    Line ortholine = Line(point, -1 / line.get_coef());
     Point intersection = lineIntersection(line, ortholine);
     double add_x = intersection.x - point.x;
     double add_y = intersection.y - point.y;
@@ -128,12 +153,20 @@ public:
     virtual bool isCongruentTo(const Shape& another) const = 0;
     virtual bool isSimilarTo(const Shape& another) const = 0;
     virtual bool containsPoint(Point point) const = 0;
+    bool operator!=(const Shape& other) const;
 
-    virtual void rotate(const Point& center, double& angle) = 0;
+    virtual void rotate(const Point& center, double angle) = 0;
     virtual void reflex(const Point& center) = 0;
     virtual void reflex(Line axis) = 0;
     virtual void scale(Point center, double coefficient) = 0;
+
+    ShapeTypes type;
+    virtual ~Shape() {};
 };
+
+bool Shape::operator!=(const Shape& other) const {
+    return !(*this == other);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -153,10 +186,14 @@ public:
     bool isSimilarTo(const Shape& another) const override;
     bool containsPoint(Point point) const override;
 
-    void rotate(const Point& center, double& angle) override;
+    void rotate(const Point& center, double angle) override;
     void reflex(const Point& center) override;
     void reflex(Line axis) override;
     void scale(Point center, double coefficient) override;
+
+    double focal_distance() const;
+
+    ~Ellipse() override {};
 
 private:
     pair<Point, Point> focus;
@@ -166,9 +203,36 @@ private:
     double c() const;
 };
 
+double Ellipse::focal_distance() const {
+    return dist;
+}
+
 Ellipse::Ellipse(Point foc1, Point foc2, double _dist) {
     focus = make_pair(foc1, foc2);
     dist = _dist;
+    type = ST_ELLIPSE;
+}
+
+bool Ellipse::isSimilarTo(const Shape& other) const {
+    if (other.type != ST_ELLIPSE)
+        return false;
+    Ellipse shape = dynamic_cast<const Ellipse&>(other);
+
+    return a() / b() == shape.a() / shape.b() || b() / a() == shape.a() / shape.b();
+}
+
+bool Ellipse::isCongruentTo(const Shape& another) const {
+    return isSimilarTo(another) && area() == another.area();
+}
+
+bool Ellipse::operator==(const Shape& other) const {
+    if (other.type != ST_ELLIPSE)
+        return false;
+    Ellipse shape = dynamic_cast<const Ellipse&>(other);
+    if ((focus.first == shape.focus.first && focus.second == shape.focus.second 
+    || focus.first == shape.focus.second && focus.second == shape.focus.first) && areSame(dist, shape.dist))
+        return true;
+    return false;
 }
 
 pair<Point, Point> Ellipse::focuses() const {
@@ -180,11 +244,11 @@ double Ellipse::a() const {
 }
 
 double Ellipse::b() const {
-    return a() * a() - c() * c();
+    return sqrt(a() * a() - c() * c());
 }
 
 double Ellipse::c() const {
-    return distance(focus.first, focus.second);
+    return bandistance(focus.first, focus.second) / 2;
 }
 
 double Ellipse::eccentricity() const {
@@ -192,14 +256,14 @@ double Ellipse::eccentricity() const {
 }
 
 double Ellipse::perimeter() const {
-    return (M_PI * a() * b() + a() - b()) / (a() + b());
+    return M_PI * (3 * (a() + b()) - sqrt(3. * a() * a() + 10. * a() * b() + 3. * b() * b()));
 }
 
 double Ellipse::area() const {
     return M_PI * a() * b();
 }
 
-void Ellipse::rotate(const Point& center, double& angle) {
+void Ellipse::rotate(const Point& center, double angle) {
     rotatePoint(focus.first, center, angle);
     rotatePoint(focus.second, center, angle);
 }
@@ -219,73 +283,89 @@ void Ellipse::scale(Point center, double coefficient) {
     scalePoint(focus.second, center, coefficient);
     dist *= coefficient;
 }
-
-///////////////////////////////////////////////////////////////////
-                                                                ///
-pair<Line, Line> Ellipse::directrices() const {                 ///
-    double coef = Line(focus.first, focus.second).get_coef();   ///
-    double e = eccentricity();                                  ///
-    coef = -(1 / coef);                                         ///
-    //Point p1(center().x + );                                  ///
-}                                                               ///
-///////////////////////////////////////////////////////////////////
+                                                                
+pair<Line, Line> Ellipse::directrices() const {
+    double e = eccentricity();
+    Point cent = center();
+    if (focus.first.x == focus.second.x) {
+        Point first(cent.x, cent.y - a() / e);
+        Point second(cent.x, cent.y + a() / e);
+        return make_pair(Line(first, 0), Line(second, 0));
+    }
+    if (focus.first.y == focus.second.y) {
+        Point first_low(cent.x - a() / e, cent.y);
+        Point first_high(cent.x - a() / e, cent.y + 1);
+        Point second_low(cent.x + a() /e, cent.y);
+        Point second_high(cent.x + a() / e, cent.y + 1);
+        return make_pair(Line(first_low, first_high), Line(second_low, second_high));
+    }
+    double coef = Line(focus.first, focus.second).get_coef();
+    double x = 1;
+    double y = coef;
+    double k = ((a() / e) * (a() / e)) / (x * x + y * y);
+    x *= k;
+    y *= k;
+    Point dir_l(center().x - x, center().y - y);
+    Point dir_r(center().x + x, center().y + y);
+    return make_pair(Line(dir_l, -1 / coef), Line(dir_r, -1 / coef));
+}                                                               
 
 Point Ellipse::center() const {
     return Point((focus.first.x + focus.second.x) / 2, (focus.first.y + focus.second.y) / 2);
 }
 
+bool Ellipse::containsPoint(Point point) const {
+    return bandistance(point, focus.first) + bandistance(point, focus.second) < dist;
+};
+
 class Circle : public Ellipse {
 public:
-    Circle(const Point& center, double rad) : center(center), rad(rad), Ellipse(center, center, 2 * rad) {};
+    Circle(const Point& center, double _rad) : Ellipse(center, center, 2 * _rad) {};
     double radius() const;
 
     double perimeter() const override;
     double area() const override;
 
-    void rotate(const Point& _center, double& angle) override;
+    void rotate(const Point& _center, double angle) override;
     void reflex(const Point& _center) override;
     void reflex(Line axis) override;
     void scale(Point _center, double coefficient) override;
-
-private:
-    Point center;
-    double rad;
 };
 
-void Circle::rotate(const Point& _center, double& angle) {
-    Point new_center = center;
+void Circle::rotate(const Point& _center, double angle) {
+    Point new_center = focuses().first;
     rotatePoint(new_center, _center, angle);
-    *this = Circle(new_center, rad);
+    *this = Circle(new_center, focal_distance() / 2);
 }
 
 void Circle::reflex(const Point& _center) {
-    Point new_center = center;
+    Point new_center = focuses().first;
     reflexPoint(new_center, _center);
-    *this = Circle(new_center, rad);
+    *this = Circle(new_center, focal_distance() / 2);
 }
 
 void Circle::reflex(Line axis) {
-    Point new_center = center;
+    Point new_center = focuses().first;
     reflexPoint(new_center, axis);
-    *this = Circle(new_center, rad);
+    *this = Circle(new_center, focal_distance() / 2);
 }
 
 void Circle::scale(Point _center, double coefficient) {
-    Point new_center = center;
+    Point new_center = focuses().first;
     scalePoint(new_center, _center, coefficient);
-    *this = Circle(new_center, rad);
+    *this = Circle(new_center, focal_distance() / 2);
 }
 
 double Circle::radius() const {
-    return rad;
+    return focal_distance() / 2;
 }
 
 double Circle::perimeter() const {
-    return 2 * M_PI * rad;
+    return M_PI * focal_distance();
 }
 
 double Circle::area() const {
-    return M_PI * rad * rad;
+    return M_PI * (focal_distance() / 2) * (focal_distance() / 2);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -306,25 +386,29 @@ public:
     bool isSimilarTo(const Shape& another) const override;
     bool containsPoint(Point point) const override;
 
-    void rotate(const Point& _center, double& angle) override;
+    void rotate(const Point& _center, double angle) override;
     void reflex(const Point& _center) override;
     void reflex(Line axis) override;
     void scale(Point _center, double coefficient) override;
 
+    ~Polygon() override {};
+
 private:
     vector<Point> vertices;
-    void add_vertexes() {};
+    void add_vertexes();
     template<typename Head, typename... Tail>
     void add_vertexes(const Head& head, const Tail&... tail);
 };
 
 Polygon::Polygon(const vector<Point>& points) {
-    vertices = points;    
+    vertices = points;
+    type = ST_POLYGON;
 }
 
 template<typename... Args>
 Polygon::Polygon(Args... args) {
     add_vertexes(args...);
+    type = ST_POLYGON;
 }
 
 size_t Polygon::verticesCount() const {
@@ -335,14 +419,89 @@ vector<Point> Polygon::getVertices() const {
     return vertices;
 }
 
+bool Polygon::isSimilarTo(const Shape& other) const {
+    if (other.type != ST_POLYGON)
+        return false;
+    const Polygon shape = dynamic_cast<const Polygon&>(other);
+    vector<Point> vert = getVertices();
+    vector<Point> vert_other = shape.getVertices();
+    if (vert.size() != vert_other.size())
+        return false;
+    vector<double> edges;
+    vector<double> edges_other;
+    for (size_t i = 0; i < vert.size(); ++i) {
+        edges.push_back(bandistance(vert[i], vert[(i + 1) % vert.size()]));
+        edges_other.push_back(bandistance(vert_other[i], vert_other[(i + 1) % vert.size()]));
+    }
+    for (size_t i = 0; i < edges.size(); ++i) {
+        double k = edges[i] / edges_other[0];
+        bool res = true;
+        for (size_t j = 0; j < edges.size(); ++j) {
+            if (!areSame(edges[(j + i) % edges.size()] / edges_other[j], k)) {
+                res = false;
+                break;
+            }
+        }
+        if (res)
+            return true;
+    }
+    for (size_t i = 0; i < vert.size(); ++i) {
+        double k = edges[i] / edges_other[0];
+        bool res = true;
+        for (size_t j = 0; j < edges.size(); ++j) {
+            if (!areSame(edges[(edges.size() + i - j) % edges.size()] / edges_other[j], k)) {
+                res = false;
+                break;
+            }
+        }
+        if (res)
+            return true;
+    }
+    return false;
+}
+
+bool Polygon::isCongruentTo(const Shape& another) const {
+    return isSimilarTo(another) && area() == another.area();
+}
+
+bool Polygon::operator==(const Shape& other) const {
+    if (other.type != ST_POLYGON)
+        return false;
+    const Polygon shape = dynamic_cast<const Polygon&>(other);
+    vector<Point> vert = getVertices();
+    vector<Point> vert_other = shape.getVertices();
+    if (vert.size() != vert_other.size())
+        return false;
+    size_t start_vertex = vert.size();
+    for (size_t i = 0; i < vert_other.size(); ++i)
+        if (vert[i] == vert_other[0]) {
+            start_vertex = i;
+            break;
+        }
+    if (start_vertex == vert.size())
+        return false;
+    if (vert[(start_vertex + 1) % vert.size()] == vert_other[1]) {
+        for (size_t i = 0; i < vert.size(); ++i)
+            if (vert[(start_vertex + i) % vert.size()] != vert_other[i])
+                return false;
+        return true;
+    } else {
+        for (size_t i = 0; i < vert.size(); ++i)
+            if (vert[(start_vertex + vert.size() - i) % vert.size()] != vert_other[i])
+                return false;
+        return true;
+    }
+    return false;
+}
+
 bool Polygon::isConvex() const {
     bool flag_neg = false;
     bool flag_pos = false;
     for (size_t i = 0; i < verticesCount(); ++i) {
         size_t j = (i + 1) % verticesCount();
         size_t k = (i + 2) % verticesCount();
-        double z = (vertices[j].x - vertices[i].x) * (vertices[j].y - vertices[i].y) 
-                - (vertices[k].x - vertices[j].x) * (vertices[k].y - vertices[j].y);
+        double z = (vertices[j].x - vertices[i].x) * (vertices[k].y - vertices[j].y) 
+                - (vertices[j].y - vertices[i].y) * (vertices[k].x - vertices[j].x);
         if (z < 0)
             flag_neg |= true;
         else if (z > 0)
@@ -356,7 +515,7 @@ bool Polygon::isConvex() const {
         return false;
 }
 
-void Polygon::rotate(const Point& _center, double& angle) {
+void Polygon::rotate(const Point& _center, double angle) {
     for (size_t i = 0; i < vertices.size(); ++i)
         rotatePoint(vertices[i], _center, angle);
 }
@@ -376,6 +535,8 @@ void Polygon::scale(Point _center, double coef) {
         scalePoint(vertices[i], _center, coef);
 }
 
+void Polygon::add_vertexes() {};
+
 template<typename Head, typename... Tail>
 void Polygon::add_vertexes(const Head& head, const Tail&... tail) {
     vertices.push_back(head);
@@ -383,19 +544,36 @@ void Polygon::add_vertexes(const Head& head, const Tail&... tail) {
 }
 
 double Polygon::perimeter() const {
-    double res = distance(vertices[0], vertices[vertices.size() - 1]);
+    double res = bandistance(vertices[0], vertices[vertices.size() - 1]);
     for (size_t i = 0; i < vertices.size() - 1; ++i)
-        res += distance(vertices[i], vertices[i + 1]);
+        res += bandistance(vertices[i], vertices[i + 1]);
     return res;
 }
 
 double Polygon::area() const {
     double res = (vertices[0].x + vertices[vertices.size() - 1].x) * (vertices[0].y - vertices[vertices.size() - 1].y);
     for (size_t i = 0; i < vertices.size() - 1; ++i)
-        res += (vertices[i].x + vertices[i + 1].x) * (vertices[i].y - vertices[i + 1].y);
+        res += (vertices[i].x + vertices[i + 1].x) * (vertices[i + 1].y - vertices[i].y);
     res /= 2;
-    return res;
+    return abs(res);
 }
+
+bool Polygon::containsPoint(Point point) const {
+    vector<Point> vert = getVertices();
+    double sum = 0;
+    for (size_t i = 0; i < vert.size(); ++i) {
+        Point p = vert[i];
+        Point q = vert[(i + 1) % vert.size()];
+        Line first(p, point);
+        Line second(q, point);
+        double ang_cos = (first.a * second.a + first.b * second.b)
+        / (sqrt(first.a * first.a + first.b * first.b) 
+        * sqrt(second.a * second.a + second.b * second.b));
+        double angle = acos(ang_cos);
+        sum += angle;
+    }
+    return areSame(sum, 2. * M_PI);
+};
 
 class Triangle : public Polygon {
 public:
@@ -408,19 +586,22 @@ public:
 
     Line EulerLine() const;
     Circle ninePointsCircle() const;
-    
-    double perimeter() const override;
-    double area() const override;
-    bool operator==(const Shape& other) const override;
-    bool isCongruentTo(const Shape& another) const override;
-    bool isSimilarTo(const Shape& another) const override;
-    bool containsPoint(Point point) const override;
-
-    void rotate(const Point& center, double& angle) override;
-    void reflex(const Point& center) override;
-    void reflex(Line axis) override;
-    void scale(Point center, double coefficient) override;
 };
+
+Line Triangle::EulerLine() const {
+    return Line(orthocenter(), circumscribedCircle().center());
+}
+
+Circle Triangle::ninePointsCircle() const {
+    double centx =  (orthocenter().x + circumscribedCircle().center().x) / 2;
+    double centy =  (orthocenter().y + circumscribedCircle().center().y) / 2;
+    Point center(centx, centy);
+    centx = (getVertices()[0].x + getVertices()[1].x) / 2;
+    centy = (getVertices()[0].y + getVertices()[1].y) / 2;
+    Point circ_point(centx, centy);
+    double rad = bandistance(center, circ_point);
+    return Circle(center, rad);
+}
 
 Point Triangle::centroid() const {
     vector<Point> verts = getVertices();
@@ -432,62 +613,112 @@ Point Triangle::centroid() const {
 }
 
 Point Triangle::orthocenter() const {
-    vector<Point> verts = getVertices();
-    Line edge1 = Line(verts[1], verts[2]);
-    Line edge2 = Line(verts[0], verts[2]);
-    Line height1(verts[0], -edge1.get_coef());
-    Line height2(verts[1], -edge2.get_coef());
-    return lineIntersection(height1, height2);
+    vector<Point> vert = getVertices();
+
+    double centx
+    = (vert[2].x * vert[0].x + vert[1].y * vert[1].y) * vert[0].y
+    + (vert[1].x * vert[2].x + vert[0].y * vert[0].y) * vert[2].y
+    + (vert[0].x * vert[1].x + vert[2].y * vert[2].y) * vert[1].y
+    - (vert[2].x * vert[0].x + vert[1].y * vert[1].y) * vert[2].y
+    - (vert[1].x * vert[2].x + vert[0].y * vert[0].y) * vert[1].y
+    - (vert[0].x * vert[1].x + vert[2].y * vert[2].y) * vert[0].y;
+
+    double centy
+    = (vert[0].x * vert[0].x + vert[1].y * vert[2].y) * vert[1].x
+    + (vert[2].x * vert[2].x + vert[0].y * vert[1].y) * vert[0].x
+    + (vert[1].x * vert[1].x + vert[2].y * vert[0].y) * vert[2].x
+    - (vert[0].x * vert[0].x + vert[1].y * vert[2].y) * vert[2].x
+    - (vert[2].x * vert[2].x + vert[0].y * vert[1].y) * vert[1].x
+    - (vert[1].x * vert[1].x + vert[2].y * vert[0].y) * vert[0].x;
+
+    double denom = vert[0].x * vert[1].y + vert[2].x * vert[0].y + vert[1].x * vert[2].y
+    - vert[2].x * vert[1].y - vert[1].x * vert[0].y - vert[0].x * vert[2].y;
+
+    centx /= denom;
+    centy /= denom;
+
+    return Point(centx, centy);
+}
+
+Circle Triangle::inscribedCircle() const {
+    vector<Point> vert = getVertices();
+    double a = bandistance(vert[1], vert[2]);
+    double b = bandistance(vert[0], vert[2]);
+    double c = bandistance(vert[0], vert[1]);
+    double centx = (a * vert[0].x + b * vert[1].x + c * vert[2].x) / (a + b + c);
+    double centy = (a * vert[0].y + b * vert[1].y + c * vert[2].y) / (a + b + c);
+    Point center(centx, centy);
+    double rad = 2 * area() / (a + b + c);
+    return Circle(center, rad);
+};
+
+Circle Triangle::circumscribedCircle() const {
+    vector<Point> vert = getVertices();
+    double centx 
+    = (vert[0].x * vert[0].x + vert[0].y * vert[0].y) * vert[1].y 
+    + (vert[1].x * vert[1].x + vert[1].y * vert[1].y) * vert[2].y 
+    + (vert[2].x * vert[2].x + vert[2].y * vert[2].y) * vert[0].y
+    - (vert[0].x * vert[0].x + vert[0].y * vert[0].y) * vert[2].y 
+    - (vert[1].x * vert[1].x + vert[1].y * vert[1].y) * vert[0].y 
+    - (vert[2].x * vert[2].x + vert[2].y * vert[2].y) * vert[1].y;
+
+    double centy 
+    = (vert[0].x * vert[0].x + vert[0].y * vert[0].y) * vert[2].x
+    + (vert[1].x * vert[1].x + vert[1].y * vert[1].y) * vert[0].x 
+    + (vert[2].x * vert[2].x + vert[2].y * vert[2].y) * vert[1].x
+    - (vert[0].x * vert[0].x + vert[0].y * vert[0].y) * vert[1].x 
+    - (vert[1].x * vert[1].x + vert[1].y * vert[1].y) * vert[2].x 
+    - (vert[2].x * vert[2].x + vert[2].y * vert[2].y) * vert[0].x;
+
+    double denom = 2 * (vert[0].x * vert[1].y + vert[2].x * vert[0].y + vert[1].x * vert[2].y
+    - vert[2].x * vert[1].y - vert[1].x * vert[0].y - vert[0].x * vert[2].y);
+
+    centx /= denom;
+    centy /= denom;
+
+    Point center(centx, centy);
+    double rad = bandistance(center, vert[0]);
+
+    return Circle(center, rad);
 }
 
 class Rectangle : public Polygon {
 public:
-    Rectangle(Point x, Point y, double length, double width);
+    Rectangle(Point x, Point y, double coef);
     Rectangle(Point a, Point b, Point c, Point d) : Polygon(a, b, c, d) {};
     Point center() const;
     pair<Line, Line> diagonals() const;
-
-    double perimeter() const override;
-    double area() const override;
-    bool operator==(const Shape& other) const override;
-    bool isCongruentTo(const Shape& another) const override;
-    bool isSimilarTo(const Shape& another) const override;
-    bool containsPoint(Point point) const override;
-
-    void rotate(const Point& center, double& angle) override;
-    void reflex(const Point& center) override;
-    void reflex(Line axis) override;
-    void scale(Point center, double coefficient) override;
 
 private:
 
 };
 
-Rectangle::Rectangle(Point x, Point y, double length, double width) {
-    if (length > width)
-        swap(length, width);
-    double k = distance(x, y) / sqrt(width * width + length * length);
-    length *= k;
-    width *= k;
-    Point center = x.y < y.y ? x : y;
-    Line diagonal(x, y);
-    Line unrotated_diag;
-    Point a, b;
-    if (x.y < y.y) {
-        a = Point(x.x + length, x.y);
-        b = Point(x.x, x.y + width);
-        unrotated_diag = Line(x, Point(x.x + length, x.y + width));
-        double angle = (diagonal.get_coef - unrotated_diag.get_coef) / (1 + diagonal.get_coef * unrotated_diag.get_coef);
-        rotatePoint(a, x, angle);
-        rotatePoint(b, x, angle);
-    } else {
-        a = Point(y.x + width, y.y);
-        b = Point(y.x, y.y + length);
-        unrotated_diag = Line(x, Point(y.x + width, y.y + width));
-        double angle = (diagonal.get_coef - unrotated_diag.get_coef) / (1 + diagonal.get_coef * unrotated_diag.get_coef);
-        rotatePoint(a, y, angle);
-        rotatePoint(b, y, angle);
-    }
+Rectangle::Rectangle(Point x, Point y, double coef) {
+    Point cent((x.x + y.x) / 2, (x.y + y.y) / 2);
+    coef = max(coef, 1.0 / coef);
+    double diag_len = bandistance(x, y);
+    double width = diag_len / sqrt(1.0 + coef * coef);
+    
+    Line diag(x, y);
+    Point p(diag.a, diag.b);
+    Point diag_vec(y.x - x.x, y.y - x.y);
+    Point height_vec(diag_vec.x / (1.0 + coef * coef), diag_vec.y / (1.0 + coef * coef));
+    Point h(x.x + height_vec.x, x.y + height_vec.y);
+
+    p = Point(p.x / sqrt(p.x * p.x + p.y * p.y), p.y / sqrt(p.x * p.x + p.y * p.y));
+    double case_true_x = h.x + p.x * (diag_len * coef / (coef * coef + 1.0));
+    double case_true_y = h.y + p.y * (diag_len * coef / (coef * coef + 1.0));
+
+    double case_false_x = h.x - p.x * (diag_len * coef / (coef * coef + 1.0));
+    double case_false_y = h.y - p.y * (diag_len * coef / (coef * coef + 1.0));
+
+    Point case_true(case_true_x, case_true_y);
+    Point case_false(case_false_x, case_false_y);
+
+    Point a;
+    if (areSame(bandistance(case_true, x), width) && !areSame(p.x * diag_vec.y - p.y * diag_vec.x, 0.))
+        a = case_true;
+    Point b(a.x + (cent.x - a.x) * 2, a.y + (cent.y - a.y) * 2);
     *this = Rectangle(x, a, y, b);
 }
 
@@ -501,23 +732,26 @@ Point Rectangle::center() const {
 
 class Square : public Rectangle {
 public:
-    Square(Point a, Point b) : Rectangle(a, b, 1, 1) {};
+    Square(Point a, Point b) : Rectangle(a, b, 1) {};
     Circle circumscribedCircle() const;
     Circle inscribedCircle() const;
 };
 
 Circle Square::inscribedCircle() const {
-    return Circle(center(), distance(getVertices()[0], getVertices()[1]) / 2);
+    return Circle(center(), bandistance(getVertices()[0], getVertices()[1]) / 2);
 }
 
 Circle Square::circumscribedCircle() const {
-    return Circle(center(), distance(center(), getVertices()[0]));
+    return Circle(center(), bandistance(center(), getVertices()[0]));
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 int main() {
-    Polygon a(Point(), Point(), Point(), Point());
+    Point a(0, 0);
+    Point b(2, 1);
+    Point c(6, 3);
+    Rectangle r1(a, b, 2);
+    Rectangle r2(b, c, 2);
+    cout << (r1.isSimilarTo(r2) ? 1 : 0) << endl;
     system("pause");
     return 0;
 }
